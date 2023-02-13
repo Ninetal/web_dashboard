@@ -1,0 +1,18 @@
+version: '3'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: web_dashboard:latest
+    environment:
+      - SERVICE_NAME=web_dashboard
+      - SERVICE_TAGS=flask,dash
+      - C_FORCE_ROOT=1
+    restart: always
+    ports:
+      - 8060:8050
+    command: python -u run.py
+
+
