@@ -2,7 +2,8 @@ import os
 import pandas as pd
 from datetime import datetime
 
-from components.constants import DATA_FILE, DATA_DIR, AND_SUBSTR, DATE_FORMAT_MONTH, DATE_FORMAT_ISO
+from components.constants import DATA_FILE, DATA_DIR, AND_SUBSTR, DATE_FORMAT_MONTH, DATE_FORMAT_ISO, \
+    BASE_DATA_COLUMNS, ALL_VALUES_FLAG
 
 
 def get_data() -> pd.DataFrame():
@@ -26,12 +27,14 @@ def filter_data(df_data, payer_value, serv_cat_value, cl_spec_value, start_date,
     end_month = convert_date_to_month(end_date)
     mask = (df_data['MONTH'] >= start_month) & (df_data['MONTH'] <= end_month)
     filtered_df = df_data.loc[mask]
+    if len(payer_value) == 0 or len(serv_cat_value) == 0 or len(cl_spec_value) == 0:
+        return pd.DataFrame(columns=BASE_DATA_COLUMNS + ['MONTH_DT'])
     if len(payer_value):
-        filtered_df = filtered_df[filtered_df['PAYER'].isin(payer_value)]
+        filtered_df = filtered_df.loc[filtered_df['PAYER'].isin(payer_value)]
     if len(serv_cat_value):
-        filtered_df = filtered_df[filtered_df['SERVICE_CATEGORY'].isin(serv_cat_value)]
-    if len(cl_spec_value) and 'all_values' not in cl_spec_value:
-        filtered_df = filtered_df[filtered_df['CLAIM_SPECIALTY'].isin(cl_spec_value)]
+        filtered_df = filtered_df.loc[filtered_df['SERVICE_CATEGORY'].isin(serv_cat_value)]
+    if len(cl_spec_value) and ALL_VALUES_FLAG not in cl_spec_value:
+        filtered_df = filtered_df.loc[filtered_df['CLAIM_SPECIALTY'].isin(cl_spec_value)]
     return filtered_df
 
 

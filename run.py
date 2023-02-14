@@ -1,10 +1,10 @@
+import pandas as pd
 from dash.dependencies import Input, Output
 from dash import dcc, html
 from dash import dash_table
-import pandas as pd
 
 from components.data_prepare import get_data, get_column_vals, convert_month_to_date, filter_data
-from components.constants import BASE_DATA_COLUMNS
+from components.constants import BASE_DATA_COLUMNS, ALL_VALUES_FLAG
 from app import app
 
 df_data = get_data()
@@ -46,7 +46,7 @@ app.layout = html.Div([
                     dcc.Dropdown(
                         id='payer-dropdown',
                         options=[{'label': item, 'value': item} for item in payer_vals],
-                        value=payer_vals[:3],
+                        value=payer_vals,
                         multi=True,
                     ),
 
@@ -58,7 +58,7 @@ app.layout = html.Div([
                     dcc.Dropdown(
                         id='serv-cat-dropdown',
                         options=[{'label': item, 'value': item} for item in serv_cat_vals],
-                        value=serv_cat_vals[:3],
+                        value=serv_cat_vals,
                         multi=True
                     ),
 
@@ -69,19 +69,19 @@ app.layout = html.Div([
                     html.H6('Select CLAIM SPECIALTY'),
                     dcc.Dropdown(
                         id='cl-spec-dropdown',
-                        options=[{'label': 'Select all', 'value': 'all_values'}] + [{'label': item, 'value': item}
-                                                                                    for item in cl_spec_vals],
+                        options=[{'label': 'Select all', 'value': ALL_VALUES_FLAG}] + [{'label': item, 'value': item}
+                                                                                       for item in cl_spec_vals],
                         value=cl_spec_vals[:40],
                         multi=True,
                         style={'height': '150px'}
                     ),
                 ],
             ),
+            dcc.Store(id='intermediate-value')
         ],
         style={'background-color': '#dbe0ec',
                'padding': '10px'},
     ),
-
 
     html.Div(
         [
@@ -90,64 +90,90 @@ app.layout = html.Div([
         ]
     ),
     html.Div(
-        className='row',
-        children=[
-            html.Div(
-                [
-                    html.H6('Data in table format'),
-                    dash_table.DataTable(
-                        id='table-paging-with-graph',
-                        columns=[{'name': i, 'id': i} for i in BASE_DATA_COLUMNS],
-                        data=df_data[BASE_DATA_COLUMNS].to_dict('records'),
-                        page_size=20,
-                        sort_mode='multi',
-                        filter_action='native',
-                        sort_action='native',
-                    ),
-                ],
-
-                style={'margin': {'l': 10, 'r': 10, 't': 10, 'b': 50}}
-            ),
-            html.Div(
-                id='table-paging-with-graph-container',
-            )
+        [
+            html.H6('SUM PAID AMOUNT graph by month'),
+            dcc.Graph(id='sum-graph'),
         ]
+    ),
+    html.Div(
+        [
+            html.H6('Data in table format'),
+            dash_table.DataTable(
+                id='table-output',
+                columns=[{'name': i, 'id': i} for i in BASE_DATA_COLUMNS],
+                data=df_data[BASE_DATA_COLUMNS].to_dict('records'),
+                page_size=20,
+                sort_mode='multi',
+                filter_action='native',
+                sort_action='native',
+            ),
+        ],
+        style={'margin': {'l': 10, 'r': 10, 't': 10, 'b': 50}}
+    ),
+    html.Div(
+        id='graph-container',
     )
-
 ], style={'width': '500'})
 
 
-@app.callback(Output('base-graph', 'figure'), [Input('payer-dropdown', 'value'),
-                                               Input('serv-cat-dropdown', 'value'),
-                                               Input('cl-spec-dropdown', 'value'),
-                                               Input('date_period_selector', 'start_date'),
-                                               Input('date_period_selector', 'end_date')])
-def update_graph(payer_value, serv_cat_value, cl_spec_value, start_date, end_date):
+@app.callback(Output('intermediate-value', 'data'), [Input('payer-dropdown', 'value'),
+                                                     Input('serv-cat-dropdown', 'value'),
+                                                     Input('cl-spec-dropdown', 'value'),
+                                                     Input('date_period_selector', 'start_date'),
+                                                     Input('date_period_selector', 'end_date')])
+def filter_df(payer_value, serv_cat_value, cl_spec_value, start_date, end_date):
     filtered_df = filter_data(df_data, payer_value, serv_cat_value, cl_spec_value, start_date, end_date)
+    return filtered_df.to_json(date_format='iso', orient='split')
+
+
+@app.callback(Output('base-graph', 'figure'), Input('intermediate-value', 'data'))
+def update_graph(filtered_data):
+    if not filtered_data:
+        return {}
+    filtered_df = pd.read_json(filtered_data, orient='split')
     return {
         'data': [{
             'x': filtered_df.MONTH_DT,
-            'y': filtered_df.PAID_AMOUNT
+            'y': filtered_df.PAID_AMOUNT,
+            'type': 'scatter',
+            'mode': 'markers',
+            'marker': {
+                'opacity': 0.5,
+                'size': 14,
+                'line': {'border': 'thin darkgrey solid'}
+            }
         }],
         'layout': {'margin': {'l': 40, 'r': 0, 't': 20, 'b': 30}}
     }
 
 
-@app.callback(Output('table-paging-with-graph', 'data'), [Input('payer-dropdown', 'value'),
-                                                          Input('serv-cat-dropdown', 'value'),
-                                                          Input('cl-spec-dropdown', 'value'),
-                                                          Input('date_period_selector', 'start_date'),
-                                                          Input('date_period_selector', 'end_date')])
-def update_table(payer_value, serv_cat_value, cl_spec_value, start_date, end_date):
-    filtered_df = filter_data(df_data, payer_value, serv_cat_value, cl_spec_value, start_date, end_date)
+@app.callback(Output('sum-graph', 'figure'), Input('intermediate-value', 'data'))
+def update_graph(filtered_data):
+    if not filtered_data:
+        return {}
+    filtered_df = pd.read_json(filtered_data, orient='split')
+    df_part_sum = filtered_df[['MONTH_DT', 'PAID_AMOUNT']].groupby('MONTH_DT').sum()
+    df_part_sum = df_part_sum.reset_index()
+    return {
+        'data': [{
+            'x': df_part_sum.MONTH_DT,
+            'y': df_part_sum.PAID_AMOUNT
+        }],
+        'layout': {'margin': {'l': 40, 'r': 0, 't': 20, 'b': 30}}
+    }
+
+
+@app.callback(Output('table-output', 'data'), Input('intermediate-value', 'data'))
+def update_table(filtered_data):
+    if not filtered_data:
+        return []
+    filtered_df = pd.read_json(filtered_data, orient='split')
     return filtered_df[BASE_DATA_COLUMNS].to_dict('records')
 
 
-@app.callback(
-    Output('table-paging-with-graph-container', 'children'),
-    [Input('table-paging-with-graph', 'data')])
-def update_table_graph(rows):
-    dff = pd.DataFrame(rows)
+@app.callback(Output('graph-container', 'children'), Input('intermediate-value', 'data'))
+def update_table_graph(filtered_data):
+    dff = pd.read_json(filtered_data, orient='split')
     if not dff.empty:
         return html.Div(
             [
@@ -180,4 +206,5 @@ def update_table_graph(rows):
 
 
 if __name__ == '__main__':
-    app.run_server(debug=True, host='0.0.0.0', port=8050)
+    app.run_server(debug=True, host='0.0.0.0', port=8050, processes=4, threaded=False)
+
