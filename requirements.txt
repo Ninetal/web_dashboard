@@ -1,3 +1,5 @@
 dash==2.8.1
 plotly==5.13.0
 pandas==1.5.3
+fuzzywuzzy==0.18.0
+python-Levenshtein==0.20.9
