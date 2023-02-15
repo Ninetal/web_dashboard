@@ -2,19 +2,21 @@ import os
 import pandas as pd
 from datetime import datetime
 
-from components.constants import DATA_FILE, DATA_DIR, AND_SUBSTR, DATE_FORMAT_MONTH, DATE_FORMAT_ISO, \
+from components.constants import DATA_FILE, DATA_DIR, FILTER_SUBSTR, DATE_FORMAT_MONTH, DATE_FORMAT_ISO, \
     BASE_DATA_COLUMNS, ALL_VALUES_FLAG
 
 
 def get_data() -> pd.DataFrame():
     data_path = os.path.join(DATA_DIR, DATA_FILE)
     data = pd.read_csv(data_path)
+    data = data.loc[data['PAID_AMOUNT'] > 0]
     data['MONTH_DT'] = pd.to_datetime(data['MONTH'], format=DATE_FORMAT_MONTH, errors='coerce').dt.date
-    data['CLAIM_SPECIALTY'] = data['CLAIM_SPECIALTY'].str.upper().str.strip()
-    for item in AND_SUBSTR:
-        data['CLAIM_SPECIALTY'] = data['CLAIM_SPECIALTY'].str.replace(item, '/')
     data = data.dropna()
-    data = data.loc[data['PAID_AMOUNT'] != 0]
+    data['CLAIM_SPECIALTY'] = data['CLAIM_SPECIALTY'].str.upper().str.strip()
+    for item in FILTER_SUBSTR:
+        data['CLAIM_SPECIALTY'] = data['CLAIM_SPECIALTY'].str.replace(item, ' ', regex=True)
+    data['CLAIM_SPECIALTY'] = data['CLAIM_SPECIALTY'].apply(lambda x: ' '.join(str(x).split()))
+    data['SERVICE_CATEGORY'] = data['SERVICE_CATEGORY'].str.replace('SpecialistFFS', 'SpecialistsFFS', regex=True)
     return data
 
 
